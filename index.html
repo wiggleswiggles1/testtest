@@ -2,21 +2,32 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>TechBuilds Auto-TTS</title>
+    <title>Zero-Interaction TTS | TechBuilds</title>
     <script src="https://js.pusher.com/8.3.0/pusher.min.js"></script>
     <style>
+        /* No locker UI - Just a clean, transparent background */
         body { background: transparent; overflow: hidden; margin: 0; padding: 0; }
-        /* Tiny green dot so you know it's active in OBS */
-        #status { position: fixed; top: 5px; right: 5px; width: 6px; height: 6px; background: #53fc18; border-radius: 50%; opacity: 0.4; }
+        
+        /* Optional: Small indicator so you know the script is running */
+        #live-indicator {
+            position: fixed;
+            top: 5px;
+            right: 5px;
+            width: 5px;
+            height: 5px;
+            background: #53fc18;
+            border-radius: 50%;
+            opacity: 0.2;
+        }
     </style>
 </head>
 <body>
-    <div id="status"></div>
+    <div id="live-indicator"></div>
 
 <script>
     // --- CONFIGURATION ---
     const KICK_CHATROOM_ID = "1085080"; 
-    const TWITCH_CHANNEL = "xstr8xsavagex"; // Put your Twitch username here
+    const TWITCH_CHANNEL = "xstr8xsavagex"; 
     const TWITCH_OAUTH = "oauth:sb20z6c3zuvzspk3d4ny8p9jp0fjkm";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "BotRixOficial"]; 
@@ -24,56 +35,29 @@
     const PREFIX_BLOCK = ["!", "/"]; 
 
     let voices = [];
-    let active = false;
 
     function loadVoices() { 
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
-        if (voices.length === 0) console.log("No English voices loaded yet—retrying...");
     }
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
 
-    document.getElementById('unlocker').addEventListener('click', function() {
-        const test = new SpeechSynthesisUtterance("Custom TTS enabled");
-        window.speechSynthesis.speak(test);
-        
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        audioCtx.resume();
-        
-        active = true;
-        this.style.display = 'none';
-    });
-
-    // --- REPETITION DETECTION FUNCTION ---
+    // --- REPETITION DETECTION (Your Exact Logic) ---
     function isRepetitiveSpam(text) {
         const lower = text.toLowerCase().trim();
         const words = lower.split(/\s+/).filter(w => w.length > 0);
-
         if (words.length === 0) return true;
-
-        // Case 1: Single character/word repeated many times (e.g., "7 7 7 7 7")
         if (words.length >= 5) {
             const first = words[0];
-            if (first.length <= 3 && words.every(w => w === first)) {
-                return true; // All same short word
-            }
+            if (first.length <= 3 && words.every(w => w === first)) return true;
         }
-
-        // Case 2: High repetition ratio (e.g., "lmao lmao lmao haha lmao")
         const uniqueWords = new Set(words);
-        if (words.length >= 6 && uniqueWords.size <= 2) {
-            return true; // Very few unique words in a long message
-        }
-
-        // Case 3: Exact same short message pattern (like "asd asd asd asd")
+        if (words.length >= 6 && uniqueWords.size <= 2) return true;
         if (words.length >= 4) {
             const pattern = words.slice(0, 2).join(' ');
             const full = words.join(' ');
-            if (full.length > pattern.length * 2 && full.includes(pattern.repeat(3))) {
-                return true;
-            }
+            if (full.length > pattern.length * 2 && full.includes(pattern.repeat(3))) return true;
         }
-
         return false;
     }
 
@@ -85,48 +69,33 @@
         processAndSpeak(chat.sender.username, chat.content);
     });
 
-    // --- TWITCH CONNECTION ---
+    // --- TWITCH CONNECTION (With Your Exact Emote Stripping) ---
     function connectTwitch() {
         const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-        
         socket.onopen = () => {
             socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
             socket.send(`PASS ${TWITCH_OAUTH}`);
             socket.send(`NICK ${TWITCH_CHANNEL}`);
             socket.send(`JOIN #${TWITCH_CHANNEL}`);
         };
-
         socket.onmessage = (event) => {
             const raw = event.data.trim();
-            
-            if (raw.startsWith('PING')) {
-                socket.send('PONG :tmi.twitch.tv');
-                return;
-            }
-            
+            if (raw.startsWith('PING')) { socket.send('PONG :tmi.twitch.tv'); return; }
             if (!raw.includes('PRIVMSG')) return;
 
-            // Extract username
             const userMatch = raw.match(/:([^!]+)!/);
             if (!userMatch) return;
             const user = userMatch[1];
-
-            // Extract message (after the LAST ": ")
             const colonIndex = raw.lastIndexOf(' :');
             if (colonIndex === -1) return;
             let message = raw.substring(colonIndex + 2).trim();
 
-            // Safely get emotes tag
             let emoteTag = '';
             if (raw.startsWith('@')) {
                 const tagsSection = raw.slice(1, raw.indexOf(' '));
                 const emotesMatch = tagsSection.match(/emotes=([^;]*)/);
-                if (emotesMatch && emotesMatch[1] !== '') {
-                    emoteTag = emotesMatch[1];
-                }
+                if (emotesMatch && emotesMatch[1] !== '') emoteTag = emotesMatch[1];
             }
-
-            // Strip emotes
             if (emoteTag) {
                 const positions = [];
                 emoteTag.split('/').forEach(block => {
@@ -134,33 +103,25 @@
                     if (ranges) {
                         ranges.split(',').forEach(range => {
                             const [start, end] = range.split('-').map(Number);
-                            if (!isNaN(start) && !isNaN(end)) {
-                                positions.push({start, end});
-                            }
+                            positions.push({start, end});
                         });
                     }
                 });
-                positions.sort((a, b) => b.start - a.start);
-                positions.forEach(pos => {
+                positions.sort((a, b) => b.start - a.start).forEach(pos => {
                     message = message.slice(0, pos.start) + message.slice(pos.end + 1);
                 });
             }
-
             processAndSpeak(user, message);
         };
-
         socket.onclose = () => setTimeout(connectTwitch, 5000);
-        socket.onerror = () => setTimeout(connectTwitch, 5000);
     }
     connectTwitch();
 
     // --- SHARED LOGIC & FILTERS ---
     function processAndSpeak(user, raw) {
         const username = user.toLowerCase();
-        const trimmedRaw = raw.trim();
-
         if (USER_BLACKLIST.includes(username)) return;
-        if (PREFIX_BLOCK.some(p => trimmedRaw.startsWith(p))) return;
+        if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
 
         let clean = raw
             .replace(/<[^>]*>?/gm, '')           
@@ -172,22 +133,15 @@
             .trim();
 
         if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-
         if (/[a-zA-Z0-9]{2,}/.test(clean) === false) return;
-
-        // === REPETITION SPAM PROTECTION ===
-        if (isRepetitiveSpam(clean)) {
-            console.log(`Repetitive spam blocked: "${clean}" from ${username}`);
-            return;
-        }
+        if (isRepetitiveSpam(clean)) return;
 
         speak(user, clean);
     }
 
     // --- SPEAK FUNCTION ---
     function speak(user, text) {
-        if (!active) return;
-        
+        // We removed the "if(!active)" check so it attempts to play immediately
         const speech = new SpeechSynthesisUtterance(`${user} says: ${text}`);
         
         if (voices.length > 0) {
@@ -200,6 +154,13 @@
         
         window.speechSynthesis.speak(speech);
     }
+
+    // Auto-Resume Fix (Helps keep the voice engine alive)
+    setInterval(() => {
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
+    }, 5000);
 </script>
 </body>
 </html>
