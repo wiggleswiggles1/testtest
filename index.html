@@ -2,23 +2,11 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Zero-Interaction TTS | TechBuilds</title>
+    <title>TTS Master Overlay | TechBuilds</title>
     <script src="https://js.pusher.com/8.3.0/pusher.min.js"></script>
     <style>
-        /* No locker UI - Just a clean, transparent background */
         body { background: transparent; overflow: hidden; margin: 0; padding: 0; }
-        
-        /* Optional: Small indicator so you know the script is running */
-        #live-indicator {
-            position: fixed;
-            top: 5px;
-            right: 5px;
-            width: 5px;
-            height: 5px;
-            background: #53fc18;
-            border-radius: 50%;
-            opacity: 0.2;
-        }
+        #live-indicator { position: fixed; top: 5px; right: 5px; width: 5px; height: 5px; background: #53fc18; border-radius: 50%; opacity: 0.2; }
     </style>
 </head>
 <body>
@@ -30,19 +18,23 @@
     const TWITCH_CHANNEL = "xstr8xsavagex";
     const TWITCH_OAUTH = "oauth:sb20z6c3zuvzspk3d4ny8p9jp0fjkm";
 
+    // YOUR FILTERS
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial"]; 
-    const WORD_BLACKLIST = ["http", ".com"]; 
-    const PREFIX_BLOCK = ["!", "/"]; 
+    const WORD_BLACKLIST = ["http", ".com", ".net", ".org"]; 
+    const PREFIX_BLOCK = ["!", "/", "."]; 
 
     let voices = [];
+    let lastProcessedMessage = ""; // Prevent double-reading the exact same text
 
     function loadVoices() { 
+        // Get English voices for variety
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
+        if (voices.length === 0) voices = window.speechSynthesis.getVoices();
     }
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
 
-    // --- REPETITION DETECTION (Your Exact Logic) ---
+    // --- YOUR EXACT REPETITION LOGIC ---
     function isRepetitiveSpam(text) {
         const lower = text.toLowerCase().trim();
         const words = lower.split(/\s+/).filter(w => w.length > 0);
@@ -69,7 +61,7 @@
         processAndSpeak(chat.sender.username, chat.content);
     });
 
-    // --- TWITCH CONNECTION (With Your Exact Emote Stripping) ---
+    // --- TWITCH CONNECTION (With Emote Stripping) ---
     function connectTwitch() {
         const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
         socket.onopen = () => {
@@ -84,12 +76,11 @@
             if (!raw.includes('PRIVMSG')) return;
 
             const userMatch = raw.match(/:([^!]+)!/);
-            if (!userMatch) return;
-            const user = userMatch[1];
+            const user = userMatch ? userMatch[1] : "User";
             const colonIndex = raw.lastIndexOf(' :');
-            if (colonIndex === -1) return;
             let message = raw.substring(colonIndex + 2).trim();
 
+            // EMOTE STRIPPING
             let emoteTag = '';
             if (raw.startsWith('@')) {
                 const tagsSection = raw.slice(1, raw.indexOf(' '));
@@ -122,6 +113,8 @@
         const username = user.toLowerCase();
         if (USER_BLACKLIST.includes(username)) return;
         if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
+        if (raw === lastProcessedMessage) return; 
+        lastProcessedMessage = raw;
 
         let clean = raw
             .replace(/<[^>]*>?/gm, '')           
@@ -139,28 +132,32 @@
         speak(user, clean);
     }
 
-    // --- SPEAK FUNCTION ---
+    // --- SPEAK FUNCTION (WITH UNIQUE VOICES) ---
     function speak(user, text) {
-        // We removed the "if(!active)" check so it attempts to play immediately
+        window.speechSynthesis.resume(); // Poke the engine
         const speech = new SpeechSynthesisUtterance(`${user} says: ${text}`);
         
         if (voices.length > 0) {
-            const seed = user.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
-            speech.voice = voices[seed % voices.length];
+            // Seed based on username for a consistent "Unique" voice
+            let hash = 0;
+            for (let i = 0; i < user.length; i++) {
+                hash = user.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            const voiceIndex = Math.abs(hash) % voices.length;
+            speech.voice = voices[voiceIndex];
         }
         
         speech.rate = 1.1;
         speech.pitch = 1.0;
-        
         window.speechSynthesis.speak(speech);
     }
 
-    // Auto-Resume Fix (Helps keep the voice engine alive)
+    // Auto-Resume Heartbeat (Crucial for OBS Mixer)
     setInterval(() => {
         if (window.speechSynthesis.paused) {
             window.speechSynthesis.resume();
         }
-    }, 5000);
+    }, 2000);
 </script>
 </body>
 </html>
