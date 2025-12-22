@@ -2,25 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Zero-Interaction TTS | TechBuilds</title>
+    <title>TechBuilds Pro TTS | Zero-Interaction</title>
     <script src="https://js.pusher.com/8.3.0/pusher.min.js"></script>
     <style>
-        /* Hidden UI since no interaction is needed */
         body { background: transparent; overflow: hidden; margin: 0; padding: 0; }
-        #status-indicator {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            width: 10px;
-            height: 10px;
-            background: #53fc18;
-            border-radius: 50%;
-            opacity: 0.5;
-        }
+        /* Tiny indicator to show the script is running in OBS */
+        #status { position: fixed; top: 5px; right: 5px; width: 6px; height: 6px; background: #53fc18; border-radius: 50%; opacity: 0.3; }
     </style>
 </head>
 <body>
-    <div id="status-indicator"></div>
+    <div id="status"></div>
 
 <script>
     // --- CONFIGURATION ---
@@ -29,15 +20,42 @@
     const TWITCH_OAUTH = "oauth:sb20z6c3zuvzspk3d4ny8p9jp0fjkm";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "BotRixOficial"]; 
-    const PREFIX_BLOCK = ["!", "/"]; 
+    const WORD_BLACKLIST = ["http", ".com", "www.", ".net", ".org", "https"]; 
+    const PREFIX_BLOCK = ["!", "/", "."]; 
 
     let voices = [];
-    
+    let audioReady = false;
+
+    // Load voices
     function loadVoices() { 
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
     }
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
+
+    // --- REPETITION DETECTION (Your Original Logic) ---
+    function isRepetitiveSpam(text) {
+        const lower = text.toLowerCase().trim();
+        const words = lower.split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0) return true;
+        
+        // Case 1: "7 7 7 7 7"
+        if (words.length >= 5) {
+            const first = words[0];
+            if (first.length <= 3 && words.every(w => w === first)) return true;
+        }
+        // Case 2: High repetition ratio
+        const uniqueWords = new Set(words);
+        if (words.length >= 6 && uniqueWords.size <= 2) return true;
+        
+        // Case 3: Pattern repetition
+        if (words.length >= 4) {
+            const pattern = words.slice(0, 2).join(' ');
+            const full = words.join(' ');
+            if (full.length > pattern.length * 2 && full.includes(pattern.repeat(3))) return true;
+        }
+        return false;
+    }
 
     // --- KICK CONNECTION ---
     const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2', forceTLS: true });
@@ -60,37 +78,93 @@
             const raw = event.data.trim();
             if (raw.startsWith('PING')) { socket.send('PONG :tmi.twitch.tv'); return; }
             if (!raw.includes('PRIVMSG')) return;
+
             const userMatch = raw.match(/:([^!]+)!/);
             if (!userMatch) return;
             const user = userMatch[1];
+
             const colonIndex = raw.lastIndexOf(' :');
             if (colonIndex === -1) return;
             let message = raw.substring(colonIndex + 2).trim();
+
+            // Strip Twitch Emotes Logic
+            if (raw.startsWith('@')) {
+                const tagsSection = raw.slice(1, raw.indexOf(' '));
+                const emotesMatch = tagsSection.match(/emotes=([^;]*)/);
+                if (emotesMatch && emotesMatch[1] !== '') {
+                    const positions = [];
+                    emotesMatch[1].split('/').forEach(block => {
+                        const ranges = block.split(':')[1];
+                        if (ranges) {
+                            ranges.split(',').forEach(range => {
+                                const [start, end] = range.split('-').map(Number);
+                                positions.push({start, end});
+                            });
+                        }
+                    });
+                    positions.sort((a, b) => b.start - a.start);
+                    positions.forEach(pos => {
+                        message = message.slice(0, pos.start) + message.slice(pos.end + 1);
+                    });
+                }
+            }
             processAndSpeak(user, message);
         };
         socket.onclose = () => setTimeout(connectTwitch, 5000);
     }
     connectTwitch();
 
+    // --- PROCESSING & FILTERING ---
     function processAndSpeak(user, raw) {
-        if (USER_BLACKLIST.includes(user.toLowerCase())) return;
-        if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
+        const username = user.toLowerCase();
+        const trimmedRaw = raw.trim();
 
-        let clean = raw.replace(/\p{Emoji}/gu, '').replace(/\s+/g, ' ').trim();
-        if (clean.length < 2) return;
+        // 1. Blacklist & Prefix Check
+        if (USER_BLACKLIST.includes(username)) return;
+        if (PREFIX_BLOCK.some(p => trimmedRaw.startsWith(p))) return;
+
+        // 2. Clean Message (Remove HTML, Symbols, Emojis)
+        let clean = raw
+            .replace(/<[^>]*>?/gm, '')           
+            .replace(/:[a-zA-Z0-9_]+:/g, '')    
+            .replace(/\[[^\]]*\]/g, '')         
+            .replace(/\p{Emoji}/gu, '')         
+            .replace(/\p{Symbol}/gu, '')        
+            .replace(/\s+/g, ' ')               
+            .trim();
+
+        // 3. Content Filters
+        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
+        if (/[a-zA-Z0-9]{2,}/.test(clean) === false) return; // Must have at least 2 letters/numbers
+        if (isRepetitiveSpam(clean)) return;
 
         speak(user, clean);
     }
 
+    // --- SPEAK ---
     function speak(user, text) {
+        // Attempt to resume audio context in case OBS has it suspended
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+        }
+
         const speech = new SpeechSynthesisUtterance(`${user} says: ${text}`);
+        
         if (voices.length > 0) {
+            // Consistent voice per user
             const seed = user.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
             speech.voice = voices[seed % voices.length];
         }
+        
         speech.rate = 1.0;
+        speech.pitch = 1.0;
         window.speechSynthesis.speak(speech);
     }
+
+    // Auto-Resume Audio fix for Browsers
+    window.onload = () => {
+        if (window.speechSynthesis.speaking) window.speechSynthesis.cancel();
+    };
 </script>
 </body>
 </html>
