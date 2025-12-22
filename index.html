@@ -16,21 +16,66 @@
 <script>
     // --- CONFIGURATION ---
     const KICK_CHATROOM_ID = "1085080"; 
-    const TWITCH_CHANNEL = "xstr8xsavagex"; 
+    const TWITCH_CHANNEL = "xstr8xsavagex"; // Put your Twitch username here
     const TWITCH_OAUTH = "oauth:sb20z6c3zuvzspk3d4ny8p9jp0fjkm";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "BotRixOficial"]; 
-    const WORD_BLACKLIST = ["http", ".com", "www."]; 
-    const PREFIX_BLOCK = ["!", "/", "."]; 
+    const WORD_BLACKLIST = ["http", ".com"]; 
+    const PREFIX_BLOCK = ["!", "/"]; 
 
     let voices = [];
-    
-    // Load voices and filter for English
+    let active = false;
+
     function loadVoices() { 
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
+        if (voices.length === 0) console.log("No English voices loaded yet—retrying...");
     }
     window.speechSynthesis.onvoiceschanged = loadVoices;
     loadVoices();
+
+    document.getElementById('unlocker').addEventListener('click', function() {
+        const test = new SpeechSynthesisUtterance("Custom TTS enabled");
+        window.speechSynthesis.speak(test);
+        
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioCtx.resume();
+        
+        active = true;
+        this.style.display = 'none';
+    });
+
+    // --- REPETITION DETECTION FUNCTION ---
+    function isRepetitiveSpam(text) {
+        const lower = text.toLowerCase().trim();
+        const words = lower.split(/\s+/).filter(w => w.length > 0);
+
+        if (words.length === 0) return true;
+
+        // Case 1: Single character/word repeated many times (e.g., "7 7 7 7 7")
+        if (words.length >= 5) {
+            const first = words[0];
+            if (first.length <= 3 && words.every(w => w === first)) {
+                return true; // All same short word
+            }
+        }
+
+        // Case 2: High repetition ratio (e.g., "lmao lmao lmao haha lmao")
+        const uniqueWords = new Set(words);
+        if (words.length >= 6 && uniqueWords.size <= 2) {
+            return true; // Very few unique words in a long message
+        }
+
+        // Case 3: Exact same short message pattern (like "asd asd asd asd")
+        if (words.length >= 4) {
+            const pattern = words.slice(0, 2).join(' ');
+            const full = words.join(' ');
+            if (full.length > pattern.length * 2 && full.includes(pattern.repeat(3))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // --- KICK CONNECTION ---
     const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2', forceTLS: true });
@@ -40,47 +85,72 @@
         processAndSpeak(chat.sender.username, chat.content);
     });
 
-    // --- TWITCH CONNECTION (With Emote Stripping) ---
+    // --- TWITCH CONNECTION ---
     function connectTwitch() {
         const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+        
         socket.onopen = () => {
             socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
             socket.send(`PASS ${TWITCH_OAUTH}`);
             socket.send(`NICK ${TWITCH_CHANNEL}`);
             socket.send(`JOIN #${TWITCH_CHANNEL}`);
         };
-        socket.onmessage = (event) => {
-            const raw = event.data;
-            if (raw.startsWith('PING')) { socket.send('PONG :tmi.twitch.tv'); return; }
-            if (raw.includes("PRIVMSG")) {
-                const parts = raw.split(' ');
-                const tags = parts[0].startsWith('@') ? parts[0] : "";
-                const user = raw.match(/:([^!]+)!/)?.[1];
-                let message = raw.split(`PRIVMSG #${TWITCH_CHANNEL} :`)[1]?.trim();
-                
-                if (!user || !message) return;
 
-                // Strip Twitch Emotes using your specific logic
-                if (tags.includes("emotes=")) {
-                    const emoteTag = tags.split('emotes=')[1].split(';')[0];
-                    if (emoteTag) {
-                        const positions = [];
-                        emoteTag.split('/').forEach(emote => {
-                            const ranges = emote.split(':')[1];
-                            ranges.split(',').forEach(range => {
-                                const [start, end] = range.split('-').map(Number);
+        socket.onmessage = (event) => {
+            const raw = event.data.trim();
+            
+            if (raw.startsWith('PING')) {
+                socket.send('PONG :tmi.twitch.tv');
+                return;
+            }
+            
+            if (!raw.includes('PRIVMSG')) return;
+
+            // Extract username
+            const userMatch = raw.match(/:([^!]+)!/);
+            if (!userMatch) return;
+            const user = userMatch[1];
+
+            // Extract message (after the LAST ": ")
+            const colonIndex = raw.lastIndexOf(' :');
+            if (colonIndex === -1) return;
+            let message = raw.substring(colonIndex + 2).trim();
+
+            // Safely get emotes tag
+            let emoteTag = '';
+            if (raw.startsWith('@')) {
+                const tagsSection = raw.slice(1, raw.indexOf(' '));
+                const emotesMatch = tagsSection.match(/emotes=([^;]*)/);
+                if (emotesMatch && emotesMatch[1] !== '') {
+                    emoteTag = emotesMatch[1];
+                }
+            }
+
+            // Strip emotes
+            if (emoteTag) {
+                const positions = [];
+                emoteTag.split('/').forEach(block => {
+                    const ranges = block.split(':')[1];
+                    if (ranges) {
+                        ranges.split(',').forEach(range => {
+                            const [start, end] = range.split('-').map(Number);
+                            if (!isNaN(start) && !isNaN(end)) {
                                 positions.push({start, end});
-                            });
-                        });
-                        positions.sort((a, b) => b.start - a.start).forEach(pos => {
-                            message = message.slice(0, pos.start) + message.slice(pos.end + 1);
+                            }
                         });
                     }
-                }
-                processAndSpeak(user, message);
+                });
+                positions.sort((a, b) => b.start - a.start);
+                positions.forEach(pos => {
+                    message = message.slice(0, pos.start) + message.slice(pos.end + 1);
+                });
             }
+
+            processAndSpeak(user, message);
         };
+
         socket.onclose = () => setTimeout(connectTwitch, 5000);
+        socket.onerror = () => setTimeout(connectTwitch, 5000);
     }
     connectTwitch();
 
@@ -92,31 +162,32 @@
         if (USER_BLACKLIST.includes(username)) return;
         if (PREFIX_BLOCK.some(p => trimmedRaw.startsWith(p))) return;
 
-        // Clean Kick Emotes and weird characters
         let clean = raw
-            .replace(/<[^>]*>?/gm, '')           // HTML
-            .replace(/:[a-zA-Z0-9_]+:/g, '')    // :emote:
-            .replace(/\[[^\]]*\]/g, '')         // [kick_emote]
-            .replace(/\p{Emoji}/gu, '')         // Unicode Emojis
-            .replace(/\p{Symbol}/gu, '')        // Symbols
-            .replace(/\s+/g, ' ')               // Extra spaces
+            .replace(/<[^>]*>?/gm, '')           
+            .replace(/:[a-zA-Z0-9_]+:/g, '')    
+            .replace(/\[[^\]]*\]/g, '')         
+            .replace(/\p{Emoji}/gu, '')         
+            .replace(/\p{Symbol}/gu, '')        
+            .replace(/\s+/g, ' ')               
             .trim();
 
         if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
 
-        // Final check: Does it have actual letters/numbers left?
-        if (/[a-zA-Z0-9]{2,}/.test(clean)) {
-            speak(user, clean);
+        if (/[a-zA-Z0-9]{2,}/.test(clean) === false) return;
+
+        // === REPETITION SPAM PROTECTION ===
+        if (isRepetitiveSpam(clean)) {
+            console.log(`Repetitive spam blocked: "${clean}" from ${username}`);
+            return;
         }
+
+        speak(user, clean);
     }
 
-    // --- SPEAK FUNCTION (Zero-Interaction Friendly) ---
+    // --- SPEAK FUNCTION ---
     function speak(user, text) {
-        // Fix for Chrome/OBS: If the engine is stuck, resume it
-        if (window.speechSynthesis.paused) {
-            window.speechSynthesis.resume();
-        }
-
+        if (!active) return;
+        
         const speech = new SpeechSynthesisUtterance(`${user} says: ${text}`);
         
         if (voices.length > 0) {
@@ -124,20 +195,11 @@
             speech.voice = voices[seed % voices.length];
         }
         
-        speech.rate = 1.1; 
+        speech.rate = 1.1;
         speech.pitch = 1.0;
         
         window.speechSynthesis.speak(speech);
     }
-
-    // Periodically keep the audio engine alive for OBS
-    setInterval(() => {
-        if (!window.speechSynthesis.speaking) {
-            window.speechSynthesis.pause();
-            window.speechSynthesis.resume();
-        }
-    }, 10000);
-
 </script>
 </body>
 </html>
