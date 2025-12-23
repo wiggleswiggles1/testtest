@@ -113,7 +113,7 @@
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
-    function processAndSpeak(user, raw, isMod, isSub, isKick) {
+function processAndSpeak(user, raw, isMod, isSub, isKick) {
         if (!ttsEnabled || (subOnlyMode && !isMod && !isSub)) return;
         if (USER_BLACKLIST.includes(user.toLowerCase())) return;
         if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
@@ -124,17 +124,17 @@
         if (isKick) clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
 
         clean = clean
-            .replace(/<[^>]*>?/gm, '')           
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')    
-            .replace(/\[[^\]]*\]/g, '')         
-            .replace(/\p{Emoji}/gu, '')         
-            .replace(/\p{Symbol}/gu, '')        
-            .replace(/\s+/g, ' ')               
+            .replace(/<[^>]*>?/gm, '')           // Removes HTML
+            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotes:
+            .replace(/\[[^\]]*\]/g, '')         // Removes [brackets]
+            .replace(/\p{Emoji}/gu, '')         // Removes Emojis
+            .replace(/\s+/g, ' ')               // Collapses spaces
             .trim();
 
+        // Check if message is blacklisted
         if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
         
-        // FIXED: Removed the regex test that was blocking numbers
+        // If there's nothing left, don't speak
         if (clean.length === 0) return;
 
         speak(user, clean);
