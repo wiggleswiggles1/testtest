@@ -24,7 +24,7 @@
     let lastProcessedMessage = ""; 
     let ttsEnabled = true; 
     let subOnlyMode = false;
-    let readNames = true;
+    let readNames = false;
 
     function loadVoices() { 
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
