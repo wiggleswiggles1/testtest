@@ -25,6 +25,7 @@
     let ttsEnabled = true; 
     let subOnlyMode = false;
     let readNames = true;
+    let ttsVolume = 1.0;
 
     function loadVoices() { 
         voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
@@ -108,6 +109,7 @@
         else if (cmd === "!namesoff") { readNames = false; updateStatusUI(); speakSystem("Names Off"); }
         else if (cmd === "!nameson") { readNames = true; updateStatusUI(); speakSystem("Names On"); }
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
+        else if (cmd === "!ttsvol" && !isNaN(val)) { ttsVolume = Math.min(Math.max(val / 100, 0), 1); updateStatusUI(); speakSystem("Vol " + val); }
     }
 
     function processAndSpeak(user, raw, isMod, isSub, isKick) {
@@ -149,6 +151,8 @@
             for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
             speech.voice = voices[Math.abs(hash) % voices.length];
         }
+
+        speech.volume = ttsVolume;
         speech.rate = 1.1;
         window.speechSynthesis.speak(speech);
     }
