@@ -107,6 +107,7 @@
         else if (cmd === "!subsoff") { subOnlyMode = false; updateStatusUI(); speakSystem("All Mode"); }
         else if (cmd === "!namesoff") { readNames = false; updateStatusUI(); speakSystem("Names Off"); }
         else if (cmd === "!nameson") { readNames = true; updateStatusUI(); speakSystem("Names On"); }
+        else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
     function processAndSpeak(user, raw, isMod, isSub, isKick) {
