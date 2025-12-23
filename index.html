@@ -10,6 +10,7 @@
     </style>
 </head>
 <body>
+    <div id="status-msg">TTS: ON | Mode: ALL | Names: OFF</div>
 <script>
     // --- CONFIGURATION ---
     const KICK_CHATROOM_ID = "1085080"; 
@@ -49,7 +50,7 @@
         const isMod = chat.sender.identity.badges.some(b => b.type === 'moderator' || b.type === 'broadcaster');
         const isSub = chat.sender.identity.badges.some(b => b.type === 'subscriber' || b.type === 'founder' || b.type === 'og');
         handleCommands(chat.sender.username, chat.content, isMod);
-        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true); // Added 'true' to signal Kick
+        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true);
     });
 
     // --- TWITCH ---
@@ -70,7 +71,9 @@
             const parts = raw.split(' PRIVMSG #' + TWITCH_CHANNEL + ' :');
             if (parts.length < 2) return;
             let message = parts[1].trim();
-            const isMod = raw.includes('mod=1') || raw.includes('badges=broadcaster');
+            
+            // FIXED: Added broadcaster/1 to ensure your commands work
+            const isMod = raw.includes('mod=1') || raw.includes('broadcaster/1');
             const isSub = raw.includes('subscriber=1') || raw.includes('founder/1');
 
             if (raw.includes('emotes=')) {
@@ -99,8 +102,8 @@
     connectTwitch();
 
     function handleCommands(user, msg, isMod) {
-        const cmd = msg.toLowerCase().trim();
         if (!isMod) return;
+        const cmd = msg.toLowerCase().trim();
         if (cmd === "!ttsoff") { ttsEnabled = false; window.speechSynthesis.cancel(); updateStatusUI(); speakSystem("TTS Off"); }
         else if (cmd === "!ttson") { ttsEnabled = true; updateStatusUI(); speakSystem("TTS On"); }
         else if (cmd === "!subson") { subOnlyMode = true; updateStatusUI(); speakSystem("Subs Only"); }
@@ -111,31 +114,28 @@
     }
 
     function processAndSpeak(user, raw, isMod, isSub, isKick) {
-        if (!ttsEnabled) return; 
-        if (subOnlyMode && !isMod && !isSub) return;
+        if (!ttsEnabled || (subOnlyMode && !isMod && !isSub)) return;
         if (USER_BLACKLIST.includes(user.toLowerCase())) return;
         if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
         if (raw === lastProcessedMessage) return; 
         lastProcessedMessage = raw;
 
         let clean = raw;
-
-        // KICK EMOTE CLEANER
-        if (isKick) {
-            clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); // Removes [emote:123:name]
-        }
+        if (isKick) clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
 
         clean = clean
-            .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
-            .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
-            .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
-            .replace(/\p{Symbol}/gu, '')        // Removes Symbols
-            .replace(/\s+/g, ' ')               // Collapses spaces
+            .replace(/<[^>]*>?/gm, '')           
+            .replace(/:[a-zA-Z0-9_-]+:/g, '')    
+            .replace(/\[[^\]]*\]/g, '')         
+            .replace(/\p{Emoji}/gu, '')         
+            .replace(/\p{Symbol}/gu, '')        
+            .replace(/\s+/g, ' ')               
             .trim();
 
         if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-        if (/[a-zA-Z0-9]/.test(clean) === false) return;
+        
+        // FIXED: Removed the regex test that was blocking numbers
+        if (clean.length === 0) return;
 
         speak(user, clean);
     }
@@ -161,6 +161,7 @@
     }
 
     setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 2000);
+    updateStatusUI();
 </script>
 </body>
 </html>
