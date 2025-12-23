@@ -10,7 +10,6 @@
     </style>
 </head>
 <body>
-    <div id="status-msg">TTS: ON | Mode: ALL | Names: OFF</div>
 <script>
     // --- CONFIGURATION ---
     const KICK_CHATROOM_ID = "1085080"; 
@@ -50,7 +49,7 @@
         const isMod = chat.sender.identity.badges.some(b => b.type === 'moderator' || b.type === 'broadcaster');
         const isSub = chat.sender.identity.badges.some(b => b.type === 'subscriber' || b.type === 'founder' || b.type === 'og');
         handleCommands(chat.sender.username, chat.content, isMod);
-        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true);
+        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true); // Added 'true' to signal Kick
     });
 
     // --- TWITCH ---
@@ -71,9 +70,7 @@
             const parts = raw.split(' PRIVMSG #' + TWITCH_CHANNEL + ' :');
             if (parts.length < 2) return;
             let message = parts[1].trim();
-            
-            // FIXED: Added broadcaster/1 to ensure your commands work
-            const isMod = raw.includes('mod=1') || raw.includes('broadcaster/1');
+            const isMod = raw.includes('mod=1') || raw.includes('badges=broadcaster');
             const isSub = raw.includes('subscriber=1') || raw.includes('founder/1');
 
             if (raw.includes('emotes=')) {
@@ -102,8 +99,8 @@
     connectTwitch();
 
     function handleCommands(user, msg, isMod) {
-        if (!isMod) return;
         const cmd = msg.toLowerCase().trim();
+        if (!isMod) return;
         if (cmd === "!ttsoff") { ttsEnabled = false; window.speechSynthesis.cancel(); updateStatusUI(); speakSystem("TTS Off"); }
         else if (cmd === "!ttson") { ttsEnabled = true; updateStatusUI(); speakSystem("TTS On"); }
         else if (cmd === "!subson") { subOnlyMode = true; updateStatusUI(); speakSystem("Subs Only"); }
@@ -113,49 +110,34 @@
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
-function processAndSpeak(user, raw, isMod, isSub, isKick) {
-        if (!ttsEnabled || (subOnlyMode && !isMod && !isSub)) return;
+    function processAndSpeak(user, raw, isMod, isSub, isKick) {
+        if (!ttsEnabled) return; 
+        if (subOnlyMode && !isMod && !isSub) return;
         if (USER_BLACKLIST.includes(user.toLowerCase())) return;
         if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
         if (raw === lastProcessedMessage) return; 
         lastProcessedMessage = raw;
 
         let clean = raw;
-        if (isKick) clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
 
-        // CLEANING (Numbers Protected)
+        // KICK EMOTE CLEANER
+        if (isKick) {
+            clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); // Removes [emote:123:name]
+        }
+
         clean = clean
-            .replace(/<[^>]*>?/gm, '')           // Remove HTML
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Remove :emotes:
-            .replace(/\[[^\]]*\]/g, '')         // Remove [brackets]
-            .replace(/\p{Emoji}/gu, '')         // Remove Emojis
-            .replace(/\s+/g, ' ')               // Fix spacing
+            .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
+            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
+            .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
+            .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
+            .replace(/\p{Symbol}/gu, '')        // Removes Symbols
+            .replace(/\s+/g, ' ')               // Collapses spaces
             .trim();
 
-        // Safety: If message is empty after cleaning, stop
-        if (clean.length === 0) return;
-
-        // Blacklist check (Fixed to prevent blocking numbers)
         if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
+        if (/[a-zA-Z0-9]/.test(clean) === false) return;
 
         speak(user, clean);
-    }
-
-    function speak(user, text) {
-        window.speechSynthesis.resume();
-        
-        // Force conversion to String to ensure numbers are processed
-        const speechText = String(text); 
-        const finalPhrase = readNames ? `${user} says: ${speechText}` : speechText;
-        
-        const speech = new SpeechSynthesisUtterance(finalPhrase);
-        if (voices.length > 0) {
-            let hash = 0;
-            for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
-            speech.voice = voices[Math.abs(hash) % voices.length];
-        }
-        speech.rate = 1.1;
-        window.speechSynthesis.speak(speech);
     }
 
     function speak(user, text) {
@@ -179,7 +161,6 @@ function processAndSpeak(user, raw, isMod, isSub, isKick) {
     }
 
     setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 2000);
-    updateStatusUI();
 </script>
 </body>
 </html>
