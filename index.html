@@ -123,21 +123,39 @@ function processAndSpeak(user, raw, isMod, isSub, isKick) {
         let clean = raw;
         if (isKick) clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
 
+        // CLEANING (Numbers Protected)
         clean = clean
-            .replace(/<[^>]*>?/gm, '')           // Removes HTML
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotes:
-            .replace(/\[[^\]]*\]/g, '')         // Removes [brackets]
-            .replace(/\p{Emoji}/gu, '')         // Removes Emojis
-            .replace(/\s+/g, ' ')               // Collapses spaces
+            .replace(/<[^>]*>?/gm, '')           // Remove HTML
+            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Remove :emotes:
+            .replace(/\[[^\]]*\]/g, '')         // Remove [brackets]
+            .replace(/\p{Emoji}/gu, '')         // Remove Emojis
+            .replace(/\s+/g, ' ')               // Fix spacing
             .trim();
 
-        // Check if message is blacklisted
-        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-        
-        // If there's nothing left, don't speak
+        // Safety: If message is empty after cleaning, stop
         if (clean.length === 0) return;
 
+        // Blacklist check (Fixed to prevent blocking numbers)
+        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
+
         speak(user, clean);
+    }
+
+    function speak(user, text) {
+        window.speechSynthesis.resume();
+        
+        // Force conversion to String to ensure numbers are processed
+        const speechText = String(text); 
+        const finalPhrase = readNames ? `${user} says: ${speechText}` : speechText;
+        
+        const speech = new SpeechSynthesisUtterance(finalPhrase);
+        if (voices.length > 0) {
+            let hash = 0;
+            for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
+            speech.voice = voices[Math.abs(hash) % voices.length];
+        }
+        speech.rate = 1.1;
+        window.speechSynthesis.speak(speech);
     }
 
     function speak(user, text) {
