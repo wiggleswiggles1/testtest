@@ -110,6 +110,7 @@
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
+// --- UPDATED PROCESS AND SPEAK ---
 function processAndSpeak(user, raw, isMod, isSub, isKick) {
     if (!ttsEnabled) return; 
     if (subOnlyMode && !isMod && !isSub) return;
@@ -120,36 +121,41 @@ function processAndSpeak(user, raw, isMod, isSub, isKick) {
 
     let clean = raw;
 
-    // KICK EMOTE CLEANER
+    // 1. KICK EMOTE CLEANER
     if (isKick) {
         clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
     }
 
+    // 2. REFINED CLEANING
     clean = clean
         .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
         .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
         .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
-        .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
-        .replace(/[^\w\s?.!,]/g, '')        // Keep letters, numbers, spaces, and basic punctuation
+        .replace(/[^\w\s?.!,]/g, '')        // KEEP: Letters, Numbers, Spaces, and basic punctuation.
         .replace(/\s+/g, ' ')               // Collapses spaces
         .trim();
 
-    // --- FIX FOR NUMBERS ---
-    // This turns "123" into "1 2 3 " so the TTS engine reads them out loud
-    clean = clean.replace(/(\d)/g, '$1 '); 
-
+    // 3. WORD BLACKLIST CHECK
     if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-    
-    // Check if there is anything left to say (letters or numbers)
-    if (/[a-zA-Z0-9]/.test(clean) === false) return;
+
+    // 4. THE "NUMBERS" FIX
+    // Ensure we don't return early if the message contains digits (0-9)
+    // This regex checks: "Does it have at least one letter OR one number?"
+    if (/[a-zA-Z0-9]/.test(clean) === false) {
+        console.log("Message blocked: No alphanumeric characters found.");
+        return;
+    }
 
     speak(user, clean);
 }
 
 function speak(user, text) {
-    // Force the engine to wake up
-    window.speechSynthesis.cancel(); 
+    // Some engines need a resume call before every speak event
     window.speechSynthesis.resume();
+    
+    // Optional: If you want numbers read clearly (1 2 3) instead of (One Hundred Twenty Three)
+    // Uncomment the next line:
+    // text = text.replace(/(\d)/g, '$1 ');
 
     const finalPhrase = readNames ? `${user} says: ${text}` : text;
     const speech = new SpeechSynthesisUtterance(finalPhrase);
@@ -161,10 +167,10 @@ function speak(user, text) {
     }
 
     speech.rate = 1.1;
-    speech.volume = 1.0; // Ensure volume is maxed
-
-    // Critical error handling: if it fails, log it to the browser console
-    speech.onerror = (e) => console.error("TTS Error:", e);
+    speech.volume = 1.0;
+    
+    // Troubleshooting log - Open your browser console (F12) to see if this triggers
+    console.log(`Attempting to speak: ${finalPhrase}`);
 
     window.speechSynthesis.speak(speech);
 }
