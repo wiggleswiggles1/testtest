@@ -110,7 +110,7 @@
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
-    function processAndSpeak(user, raw, isMod, isSub, isKick) {
+function processAndSpeak(user, raw, isMod, isSub, isKick) {
     if (!ttsEnabled) return; 
     if (subOnlyMode && !isMod && !isSub) return;
     if (USER_BLACKLIST.includes(user.toLowerCase())) return;
@@ -130,38 +130,44 @@
         .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
         .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
         .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
-        // REMOVED: .replace(/\p{Symbol}/gu, '') <--- THIS WAS THE CULPRIT
         .replace(/[^\w\s?.!,]/g, '')        // Keep letters, numbers, spaces, and basic punctuation
         .replace(/\s+/g, ' ')               // Collapses spaces
         .trim();
 
+    // --- FIX FOR NUMBERS ---
+    // This turns "123" into "1 2 3 " so the TTS engine reads them out loud
+    clean = clean.replace(/(\d)/g, '$1 '); 
+
     if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
     
-    // Updated check: Ensure there is at least one alphanumeric character (a-z or 0-9)
+    // Check if there is anything left to say (letters or numbers)
     if (/[a-zA-Z0-9]/.test(clean) === false) return;
 
     speak(user, clean);
 }
 
-    function speak(user, text) {
-        window.speechSynthesis.resume();
-        const finalPhrase = readNames ? `${user} says: ${text}` : text;
-        const speech = new SpeechSynthesisUtterance(finalPhrase);
-        if (voices.length > 0) {
-            let hash = 0;
-            for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
-            speech.voice = voices[Math.abs(hash) % voices.length];
-        }
-        speech.rate = 1.1;
-        window.speechSynthesis.speak(speech);
+function speak(user, text) {
+    // Force the engine to wake up
+    window.speechSynthesis.cancel(); 
+    window.speechSynthesis.resume();
+
+    const finalPhrase = readNames ? `${user} says: ${text}` : text;
+    const speech = new SpeechSynthesisUtterance(finalPhrase);
+
+    if (voices.length > 0) {
+        let hash = 0;
+        for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
+        speech.voice = voices[Math.abs(hash) % voices.length];
     }
 
-    function speakSystem(text) {
-        window.speechSynthesis.cancel();
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.rate = 1.2;
-        window.speechSynthesis.speak(msg);
-    }
+    speech.rate = 1.1;
+    speech.volume = 1.0; // Ensure volume is maxed
+
+    // Critical error handling: if it fails, log it to the browser console
+    speech.onerror = (e) => console.error("TTS Error:", e);
+
+    window.speechSynthesis.speak(speech);
+}
 
     setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 2000);
 </script>
