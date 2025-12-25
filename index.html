@@ -12,9 +12,9 @@
 <body>
 <script>
     // --- CONFIGURATION ---
-    const KICK_CHATROOM_ID = ""; 
-    const TWITCH_CHANNEL = "";
-    const TWITCH_OAUTH = "";
+    const KICK_CHATROOM_ID = "techbuilds"; 
+    const TWITCH_CHANNEL = "techbuildsftw";
+    const TWITCH_OAUTH = "oauth:sb20z6c3zuvzspk3d4ny8p9jp0fjkm";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial", "BotRixOficial"]; 
     const WORD_BLACKLIST = ["http", ".com", ".net", ".org"]; 
@@ -111,34 +111,37 @@
     }
 
     function processAndSpeak(user, raw, isMod, isSub, isKick) {
-        if (!ttsEnabled) return; 
-        if (subOnlyMode && !isMod && !isSub) return;
-        if (USER_BLACKLIST.includes(user.toLowerCase())) return;
-        if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
-        if (raw === lastProcessedMessage) return; 
-        lastProcessedMessage = raw;
+    if (!ttsEnabled) return; 
+    if (subOnlyMode && !isMod && !isSub) return;
+    if (USER_BLACKLIST.includes(user.toLowerCase())) return;
+    if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
+    if (raw === lastProcessedMessage) return; 
+    lastProcessedMessage = raw;
 
-        let clean = raw;
+    let clean = raw;
 
-        // KICK EMOTE CLEANER
-        if (isKick) {
-            clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); // Removes [emote:123:name]
-        }
-
-        clean = clean
-            .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
-            .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
-            .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
-            .replace(/\p{Symbol}/gu, '')        // Removes Symbols
-            .replace(/\s+/g, ' ')               // Collapses spaces
-            .trim();
-
-        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-        if (/[a-zA-Z0-9]/.test(clean) === false) return;
-
-        speak(user, clean);
+    // KICK EMOTE CLEANER
+    if (isKick) {
+        clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); 
     }
+
+    clean = clean
+        .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
+        .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
+        .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
+        .replace(/\p{Emoji}/gu, '')         // Removes Unicode Emojis
+        // REMOVED: .replace(/\p{Symbol}/gu, '') <--- THIS WAS THE CULPRIT
+        .replace(/[^\w\s?.!,]/g, '')        // Keep letters, numbers, spaces, and basic punctuation
+        .replace(/\s+/g, ' ')               // Collapses spaces
+        .trim();
+
+    if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
+    
+    // Updated check: Ensure there is at least one alphanumeric character (a-z or 0-9)
+    if (/[a-zA-Z0-9]/.test(clean) === false) return;
+
+    speak(user, clean);
+}
 
     function speak(user, text) {
         window.speechSynthesis.resume();
