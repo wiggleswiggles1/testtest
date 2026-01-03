@@ -13,8 +13,8 @@
 <script>
     // --- CONFIGURATION ---
     const KICK_CHATROOM_ID = "914096"; 
-    const TWITCH_CHANNEL = "techbuildsftw";
-    const TWITCH_OAUTH = "oauth:k00bellyf4iqcc6obzjomv9c7v6w1q";
+    const TWITCH_CHANNEL = "techbuilds";
+    const TWITCH_OAUTH = "oauth:";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial", "BotRixOficial"]; 
     const WORD_BLACKLIST = ["http", ".com", ".net", ".org"]; 
@@ -110,7 +110,6 @@
         else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }    
     }
 
-// --- UPDATED PROCESS AND SPEAK ---
 function processAndSpeak(user, raw, isMod, isSub, isKick) {
     if (!ttsEnabled) return; 
     if (subOnlyMode && !isMod && !isSub) return;
@@ -130,21 +129,17 @@ function processAndSpeak(user, raw, isMod, isSub, isKick) {
     clean = clean
         .replace(/<[^>]*>?/gm, '')           // Removes HTML tags
         .replace(/:[a-zA-Z0-9_-]+:/g, '')    // Removes :emotename:
-        .replace(/\[[^\]]*\]/g, '')         // Removes bracketed text
-        .replace(/[^\w\s?.!,]/g, '')        // KEEP: Letters, Numbers, Spaces, and basic punctuation.
-        .replace(/\s+/g, ' ')               // Collapses spaces
+        .replace(/\[[^\]]*\]/g, '')          // Removes bracketed text
+        // UPDATED WHITELIST: We added \$ here so the dollar sign is NOT deleted
+        .replace(/[^\w\s?.!,\$]/g, '')       
+        .replace(/\s+/g, ' ')                // Collapses spaces
         .trim();
 
     // 3. WORD BLACKLIST CHECK
     if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
 
-    // 4. THE "NUMBERS" FIX
-    // Ensure we don't return early if the message contains digits (0-9)
-    // This regex checks: "Does it have at least one letter OR one number?"
-    if (/[a-zA-Z0-9]/.test(clean) === false) {
-        console.log("Message blocked: No alphanumeric characters found.");
-        return;
-    }
+    // 4. VALIDATION
+    if (/[a-zA-Z0-9]/.test(clean) === false) return;
 
     speak(user, clean);
 }
