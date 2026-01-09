@@ -11,14 +11,17 @@
 </head>
 <body>
 <script>
-    // --- CONFIGURATION ---
-    const KICK_CHATROOM_ID = "914096"; 
-    const TWITCH_CHANNEL = "techbuilds";
-    const TWITCH_OAUTH = "oauth:";
+ // --- DYNAMIC CONFIGURATION ---
+const urlParams = new URLSearchParams(window.location.search);
 
-    // --- VOICE OPTIONS ---
-    let VOICE_SETTING = "random"; // "fixed" or "random"
-    const FIXED_VOICE_NAME = "Google US English"; 
+// Fallback to your defaults if the URL doesn't have them
+const KICK_CHATROOM_ID = urlParams.get('kick') || "914096"; 
+const TWITCH_CHANNEL = urlParams.get('twitch') || "techbuilds";
+const TWITCH_OAUTH = urlParams.get('oauth') || "oauth:your_default_here"; 
+
+// You can even let them customize settings via URL!
+let VOICE_SETTING = urlParams.get('voice') || "random"; 
+const FIXED_VOICE_NAME = urlParams.get('voicename') || "Google US English";
 
     const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial", "BotRixOficial"]; 
     const WORD_BLACKLIST = ["http", ".com", ".net", ".org"]; 
