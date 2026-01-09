@@ -12,11 +12,16 @@
 <body>
 <script>
  // --- DYNAMIC CONFIGURATION ---
+// --- DYNAMIC CONFIGURATION ---
+// This looks at the URL (e.g., ?kick=123&twitch=abc)
 const urlParams = new URLSearchParams(window.location.search);
 
-// Fallback to your defaults if the URL doesn't have them
+// Get values from URL or use a "Demo" default if empty
 const KICK_CHATROOM_ID = urlParams.get('kick') || "914096"; 
 const TWITCH_CHANNEL = urlParams.get('twitch') || "techbuilds";
+
+// Log to console so you can see if it's working (Press F12 in browser)
+console.log("Loading TTS for Kick:", KICK_CHATROOM_ID, "and Twitch:", TWITCH_CHANNEL);
 const TWITCH_OAUTH = urlParams.get('oauth') || "oauth:your_default_here"; 
 
 // You can even let them customize settings via URL!
