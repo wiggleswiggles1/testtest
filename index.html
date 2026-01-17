@@ -1,183 +1,194 @@
-so like this is what i host on github <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>TTS Master Overlay | TechBuilds</title>
-    <script src="https://js.pusher.com/8.3.0/pusher.min.js"></script>
-    <style>
-        body { background: transparent; overflow: hidden; margin: 0; padding: 0; }
-        #status-msg { position: fixed; top: 10px; left: 10px; color: white; font-family: sans-serif; font-size: 11px; text-shadow: 1px 1px black; opacity: 0.4; }
-    </style>
+    <meta charset="UTF-8">
+    <title>TTS Master Overlay | TechBuilds</title>
+    <script src="https://js.pusher.com/8.3.0/pusher.min.js"></script>
+    <style>
+        body { background: transparent; overflow: hidden; margin: 0; padding: 0; }
+        #status-msg { position: fixed; top: 10px; left: 10px; color: white; font-family: sans-serif; font-size: 11px; text-shadow: 1px 1px black; opacity: 0.4; }
+    </style>
 </head>
 <body>
+<div id="status-msg">Initializing...</div>
+
 <script>
-    // --- CONFIGURATION ---
-    const KICK_CHATROOM_ID = "914096"; 
-    const TWITCH_CHANNEL = "techbuilds";
-    const TWITCH_OAUTH = "oauth:";
+    // --- CONFIGURATION ---
+    const KICK_CHATROOM_ID = "914096";
+    const TWITCH_CHANNEL = "techbuilds";
+    const TWITCH_OAUTH = "oauth:";
 
-    // --- VOICE OPTIONS ---
-    let VOICE_SETTING = "random"; // "fixed" or "random"
-    const FIXED_VOICE_NAME = "Google US English"; 
+    // --- VOICE OPTIONS ---
+    let VOICE_SETTING = "random"; 
+    const FIXED_VOICE_NAME = "Google US English";
 
-    const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial", "BotRixOficial"]; 
-    const WORD_BLACKLIST = ["http", ".com", ".net", ".org"]; 
-    const PREFIX_BLOCK = ["!", "/"]; 
+    const USER_BLACKLIST = ["streamelements", "nightbot", "botrix", "kicktools", "kickbot", "growopgame", "missxss", "botrixoficial", "BotRixOficial"];
+    const WORD_BLACKLIST = ["http", ".com", ".net", ".org"];
+    const PREFIX_BLOCK = ["!", "/"];
 
-    let voices = [];
-    let lastProcessedMessage = ""; 
-    let ttsEnabled = true; 
-    let subOnlyMode = false;
-    let readNames = false;
+    let voices = [];
+    let lastProcessedMessage = "";
+    let ttsEnabled = true;
+    let subOnlyMode = false;
+    let readNames = false;
 
-    function loadVoices() { 
-        voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en')); 
-        if (voices.length === 0) voices = window.speechSynthesis.getVoices();
-        updateStatusUI();
-    }
-    window.speechSynthesis.onvoiceschanged = loadVoices;
-    loadVoices();
+    function loadVoices() {
+        voices = window.speechSynthesis.getVoices().filter(v => v.lang.includes('en'));
+        if (voices.length === 0) voices = window.speechSynthesis.getVoices();
+        updateStatusUI();
+    }
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    loadVoices();
 
-    function updateStatusUI() {
-        const el = document.getElementById('status-msg');
-        if(!el) return;
-        const mode = subOnlyMode ? "SUBS ONLY" : "ALL";
-        const nameStatus = readNames ? "ON" : "OFF";
-        const vMode = VOICE_SETTING.toUpperCase();
-        el.innerText = `TTS: ${ttsEnabled ? 'ON' : 'OFF'} | Mode: ${mode} | Names: ${nameStatus} | Voice: ${vMode}`;
-        el.style.color = ttsEnabled ? '#53fc18' : '#ff4b4b';
-    }
+    function updateStatusUI() {
+        const el = document.getElementById('status-msg');
+        if(!el) return;
+        const mode = subOnlyMode ? "SUBS ONLY" : "ALL";
+        const nameStatus = readNames ? "ON" : "OFF";
+        const vMode = VOICE_SETTING.toUpperCase();
+        el.innerText = `TTS: ${ttsEnabled ? 'ON' : 'OFF'} | Mode: ${mode} | Names: ${nameStatus} | Voice: ${vMode}`;
+        el.style.color = ttsEnabled ? '#53fc18' : '#ff4b4b';
+    }
 
-    // --- KICK ---
-    const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2', forceTLS: true });
-    const kickChannel = pusher.subscribe(`chatrooms.${KICK_CHATROOM_ID}.v2`);
-    kickChannel.bind('App\\Events\\ChatMessageEvent', (data) => {
-        const chat = typeof data === 'string' ? JSON.parse(data) : data;
-        const isMod = chat.sender.identity.badges.some(b => b.type === 'moderator' || b.type === 'broadcaster');
-        const isSub = chat.sender.identity.badges.some(b => b.type === 'subscriber' || b.type === 'founder' || b.type === 'og');
-        handleCommands(chat.sender.username, chat.content, isMod);
-        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true);
-    });
+    // --- KICK ---
+    const pusher = new Pusher('32cbd69e4b950bf97679', { cluster: 'us2', forceTLS: true });
+    const kickChannel = pusher.subscribe(`chatrooms.${KICK_CHATROOM_ID}.v2`);
+    kickChannel.bind('App\\Events\\ChatMessageEvent', (data) => {
+        const chat = typeof data === 'string' ? JSON.parse(data) : data;
+        const isMod = chat.sender.identity.badges.some(b => b.type === 'moderator' || b.type === 'broadcaster');
+        const isSub = chat.sender.identity.badges.some(b => b.type === 'subscriber' || b.type === 'founder' || b.type === 'og');
+        handleCommands(chat.sender.username, chat.content, isMod);
+        processAndSpeak(chat.sender.username, chat.content, isMod, isSub, true);
+    });
 
-    // --- TWITCH ---
-    function connectTwitch() {
-        const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-        socket.onopen = () => {
-            socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-            socket.send(`PASS ${TWITCH_OAUTH}`);
-            socket.send(`NICK ${TWITCH_CHANNEL}`);
-            socket.send(`JOIN #${TWITCH_CHANNEL}`);
-        };
-        socket.onmessage = (event) => {
-            const raw = event.data.trim();
-            if (raw.startsWith('PING')) { socket.send('PONG :tmi.twitch.tv'); return; }
-            if (!raw.includes('PRIVMSG')) return;
-            const userMatch = raw.match(/:([^!]+)!/);
-            const user = userMatch ? userMatch[1] : "User";
-            const parts = raw.split(' PRIVMSG #' + TWITCH_CHANNEL + ' :');
-            if (parts.length < 2) return;
-            let message = parts[1].trim();
-            const isMod = raw.includes('mod=1') || raw.includes('badges=broadcaster');
-            const isSub = raw.includes('subscriber=1') || raw.includes('founder/1');
-            
-            // Your original Twitch Emote cleaning logic
-            if (raw.includes('emotes=')) {
-                const emotesPart = raw.match(/emotes=([^; ]+)/);
-                if (emotesPart && emotesPart[1]) {
-                    const positions = [];
-                    emotesPart[1].split('/').forEach(e => {
-                        const ranges = e.split(':')[1];
-                        if (ranges) {
-                            ranges.split(',').forEach(r => {
-                                const [s, end] = r.split('-').map(Number);
-                                positions.push({s, end});
-                            });
-                        }
-                    });
-                    positions.sort((a, b) => b.s - a.s).forEach(p => {
-                        message = message.slice(0, p.s) + message.slice(p.end + 1);
-                    });
-                }
-            }
-            
-            handleCommands(user, message, isMod);
-            processAndSpeak(user, message, isMod, isSub, false);
-        };
-        socket.onclose = () => setTimeout(connectTwitch, 5000);
-    }
-    connectTwitch();
+    // --- TWITCH ---
+    function connectTwitch() {
+        const socket = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+        socket.onopen = () => {
+            socket.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+            socket.send(`PASS ${TWITCH_OAUTH}`);
+            socket.send(`NICK ${TWITCH_CHANNEL}`);
+            socket.send(`JOIN #${TWITCH_CHANNEL}`);
+        };
+        socket.onmessage = (event) => {
+            const raw = event.data.trim();
+            if (raw.startsWith('PING')) { socket.send('PONG :tmi.twitch.tv'); return; }
+            if (!raw.includes('PRIVMSG')) return;
+            const userMatch = raw.match(/:([^!]+)!/);
+            const user = userMatch ? userMatch[1] : "User";
+            const parts = raw.split(' PRIVMSG #' + TWITCH_CHANNEL + ' :');
+            if (parts.length < 2) return;
+            let message = parts[1].trim();
+            const isMod = raw.includes('mod=1') || raw.includes('badges=broadcaster');
+            const isSub = raw.includes('subscriber=1') || raw.includes('founder/1');
+            
+            if (raw.includes('emotes=')) {
+                const emotesPart = raw.match(/emotes=([^; ]+)/);
+                if (emotesPart && emotesPart[1]) {
+                    const positions = [];
+                    emotesPart[1].split('/').forEach(e => {
+                        const ranges = e.split(':')[1];
+                        if (ranges) {
+                            ranges.split(',').forEach(r => {
+                                const [s, end] = r.split('-').map(Number);
+                                positions.push({s, end});
+                            });
+                        }
+                    });
+                    positions.sort((a, b) => b.s - a.s).forEach(p => {
+                        message = message.slice(0, p.s) + message.slice(p.end + 1);
+                    });
+                }
+            }
+            
+            handleCommands(user, message, isMod);
+            processAndSpeak(user, message, isMod, isSub, false);
+        };
+        socket.onclose = () => setTimeout(connectTwitch, 5000);
+    }
+    connectTwitch();
 
-    function handleCommands(user, msg, isMod) {
-        const cmd = msg.toLowerCase().trim();
-        if (!isMod) return;
-        
-        // ALL YOUR ORIGINAL COMMANDS RESTORED:
-        if (cmd === "!ttsoff") { ttsEnabled = false; window.speechSynthesis.cancel(); updateStatusUI(); speakSystem("TTS Off"); }
-        else if (cmd === "!ttson") { ttsEnabled = true; updateStatusUI(); speakSystem("TTS On"); }
-        else if (cmd === "!subson") { subOnlyMode = true; updateStatusUI(); speakSystem("Subs Only"); }
-        else if (cmd === "!subsoff") { subOnlyMode = false; updateStatusUI(); speakSystem("All Mode"); }
-        else if (cmd === "!namesoff") { readNames = false; updateStatusUI(); speakSystem("Names Off"); }
-        else if (cmd === "!nameson") { readNames = true; updateStatusUI(); speakSystem("Names On"); }
-        else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); } 
-        
-        // NEW VOICE TOGGLES:
-        else if (cmd === "!voicefixed") { VOICE_SETTING = "fixed"; updateStatusUI(); speakSystem("Fixed Voice"); }
-        else if (cmd === "!voicerandom") { VOICE_SETTING = "random"; updateStatusUI(); speakSystem("Random Voices"); }
-    }
+    function handleCommands(user, msg, isMod) {
+        const cmd = msg.toLowerCase().trim();
+        if (!isMod) return;
+        
+        if (cmd === "!ttsoff") { ttsEnabled = false; window.speechSynthesis.cancel(); updateStatusUI(); speakSystem("TTS Off"); }
+        else if (cmd === "!ttson") { ttsEnabled = true; updateStatusUI(); speakSystem("TTS On"); }
+        else if (cmd === "!subson") { subOnlyMode = true; updateStatusUI(); speakSystem("Subs Only"); }
+        else if (cmd === "!subsoff") { subOnlyMode = false; updateStatusUI(); speakSystem("All Mode"); }
+        else if (cmd === "!namesoff") { readNames = false; updateStatusUI(); speakSystem("Names Off"); }
+        else if (cmd === "!nameson") { readNames = true; updateStatusUI(); speakSystem("Names On"); }
+        else if (cmd === "!ttsreset") { window.speechSynthesis.cancel(); speakSystem("TTS Reset"); }
+        else if (cmd === "!voicefixed") { VOICE_SETTING = "fixed"; updateStatusUI(); speakSystem("Fixed Voice"); }
+        else if (cmd === "!voicerandom") { VOICE_SETTING = "random"; updateStatusUI(); speakSystem("Random Voices"); }
+    }
 
-    function processAndSpeak(user, raw, isMod, isSub, isKick) {
-        if (!ttsEnabled) return; 
-        if (subOnlyMode && !isMod && !isSub) return;
-        if (USER_BLACKLIST.includes(user.toLowerCase())) return;
-        if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
-        if (raw === lastProcessedMessage) return; 
-        lastProcessedMessage = raw;
+    function processAndSpeak(user, raw, isMod, isSub, isKick) {
+        if (!ttsEnabled) return;
+        if (subOnlyMode && !isMod && !isSub) return;
+        if (USER_BLACKLIST.includes(user.toLowerCase())) return;
+        if (PREFIX_BLOCK.some(p => raw.trim().startsWith(p))) return;
+        if (raw === lastProcessedMessage) return;
+        lastProcessedMessage = raw;
 
-        let clean = raw;
-        if (isKick) { clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); }
+        let clean = raw;
+        if (isKick) { clean = clean.replace(/\[emote:\d+:[^\]]+\]/g, ''); }
 
-        clean = clean
-            .replace(/<[^>]*>?/gm, '') 
-            .replace(/:[a-zA-Z0-9_-]+:/g, '')
-            .replace(/\[[^\]]*\]/g, '')
-            .replace(/[^\w\s?.!,\$]/g, '') 
-            .replace(/\s+/g, ' ')
-            .trim();
+        clean = clean
+            .replace(/<[^>]*>?/gm, '')
+            .replace(/:[a-zA-Z0-9_-]+:/g, '')
+            .replace(/\[[^\]]*\]/g, '')
+            .replace(/[^\w\s?.!,\$]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
 
-        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
-        if (/[a-zA-Z0-9]/.test(clean) === false) return;
+        if (WORD_BLACKLIST.some(word => clean.toLowerCase().includes(word.toLowerCase()))) return;
+        if (/[a-zA-Z0-9]/.test(clean) === false) return;
 
-        speak(user, clean);
-    }
+        speak(user, clean);
+    }
 
-    function speak(user, text) {
-        window.speechSynthesis.resume();
-        const finalPhrase = readNames ? `${user} says: ${text}` : text;
-        const speech = new SpeechSynthesisUtterance(finalPhrase);
+    function speak(user, text) {
+        window.speechSynthesis.resume();
+        const finalPhrase = readNames ? `${user} says: ${text}` : text;
+        const speech = new SpeechSynthesisUtterance(finalPhrase);
 
-        if (voices.length > 0) {
-            if (VOICE_SETTING === "fixed") {
-                const target = voices.find(v => v.name.includes(FIXED_VOICE_NAME));
-                speech.voice = target || voices[0];
-            } else {
-                let hash = 0;
-                for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
-                speech.voice = voices[Math.abs(hash) % voices.length];
-            }
-        }
+        if (voices.length > 0) {
+            if (VOICE_SETTING === "fixed") {
+                const target = voices.find(v => v.name.includes(FIXED_VOICE_NAME));
+                speech.voice = target || voices[0];
+            } else {
+                let hash = 0;
+                for (let i = 0; i < user.length; i++) hash = user.charCodeAt(i) + ((hash << 5) - hash);
+                speech.voice = voices[Math.abs(hash) % voices.length];
+            }
+        }
 
-        speech.rate = 1.1;
-        speech.volume = 1.0;
-        window.speechSynthesis.speak(speech);
-    }
+        speech.rate = 1.1;
+        speech.volume = 1.0;
+        window.speechSynthesis.speak(speech);
+    }
 
-    function speakSystem(text) {
-        const msg = new SpeechSynthesisUtterance(text);
-        msg.volume = 0.5;
-        window.speechSynthesis.speak(msg);
-    }
+    function speakSystem(text) {
+        const msg = new SpeechSynthesisUtterance(text);
+        msg.volume = 0.5;
+        window.speechSynthesis.speak(msg);
+    }
 
-    setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 2000);
+    // --- HEARTBEAT & KEEP-ALIVE ---
+    // Runs every 15 seconds to keep the audio source active in OBS/Browsers
+    setInterval(() => { 
+        if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume(); 
+        }
+        
+        // Trigger a "silent" utterance to prevent the speech engine from timing out
+        if (!window.speechSynthesis.speaking) {
+            const heartbeat = new SpeechSynthesisUtterance("");
+            heartbeat.volume = 0;
+            window.speechSynthesis.speak(heartbeat);
+        }
+    }, 15000);
 </script>
 </body>
-</html> i wanna make a site to allow people to create there tts link for said channel 
+</html>
